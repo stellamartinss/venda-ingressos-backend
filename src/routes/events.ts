@@ -30,7 +30,11 @@ router.get('/', async (req, res) => {
   if (category) where.category = { contains: category, mode: 'insensitive' };
   if (from || to) where.dateTime = { gte: from ? new Date(from) : undefined, lte: to ? new Date(to) : undefined };
   const events = await prisma.event.findMany({ where, orderBy: { dateTime: 'asc' } });
-  return res.json(events);
+  return res.json({
+    count: events.length,
+    data: events,
+    success: true
+  });
 });
 
 // GET /events/my - Returns all events created by the authenticated organizer
