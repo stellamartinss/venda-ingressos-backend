@@ -1,0 +1,22 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: venda_ingressos_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: venda_ingressos
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+volumes:
+  db_data:
+
+
