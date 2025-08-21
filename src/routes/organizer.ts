@@ -313,3 +313,4 @@ router.get('/events', requireAuth(['ORGANIZER']), async (req: AuthenticatedReque
 });
 
 export default router;
+

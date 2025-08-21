@@ -15,11 +15,36 @@ const eventSchema = z.object({
   bannerUrl: z.string().url().optional(),
 });
 
+const ticketTypeSchema = z.object({
+  name: z.string().min(2),
+  price: z.number().positive(),
+  quantityTotal: z.number().int().positive(),
+});
+
 router.post('/', requireAuth(['ORGANIZER']), async (req: AuthenticatedRequest, res) => {
   const parsed = eventSchema.safeParse(req.body);
+  const parsedTicketTypes = z.array(ticketTypeSchema).safeParse(req.body.ticketTypes || []);
+
   if (!parsed.success) return res.status(400).json({ errors: parsed.error.flatten() });
   const data = parsed.data;
   const created = await prisma.event.create({ data: { ...data, dateTime: new Date(data.dateTime), organizerId: req.user!.userId, bannerUrl: data.bannerUrl ?? null } });
+  
+  if (!parsedTicketTypes.success) {
+    return res.status(400).json({ errors: parsedTicketTypes.error.flatten() });
+  }
+
+  const ticketTypesData = parsedTicketTypes.data.map(tt => ({
+    ...tt,
+    eventId: created.id,
+  }));
+
+  await prisma.ticketType.createMany({
+    data: ticketTypesData,
+  });
+
+console.log('not parsed data:', req.body);
+console.log('parsed data:', parsed.data);
+  
   return res.status(201).json(created);
 });
 
@@ -98,12 +123,6 @@ router.delete('/:id', requireAuth(['ORGANIZER']), async (req: AuthenticatedReque
   if (event.organizerId !== req.user!.userId) return res.status(403).json({ message: 'Forbidden' });
   await prisma.event.delete({ where: { id: req.params.id as string } });
   return res.status(204).send();
-});
-
-const ticketTypeSchema = z.object({
-  name: z.string().min(2),
-  price: z.number().positive(),
-  quantityTotal: z.number().int().positive(),
 });
 
 router.post('/:eventId/tickets', requireAuth(['ORGANIZER']), async (req: AuthenticatedRequest, res) => {
