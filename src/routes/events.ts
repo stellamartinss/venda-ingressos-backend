@@ -13,6 +13,7 @@ const eventSchema = z.object({
   category: z.string().min(2),
   dateTime: z.string(),
   bannerUrl: z.string().url().optional(),
+  isDeleted: z.boolean().optional().default(false),
 });
 
 const ticketTypeSchema = z.object({
@@ -50,7 +51,7 @@ console.log('parsed data:', parsed.data);
 
 router.get('/', async (req, res) => {
   const { city, category, from, to } = req.query as Record<string, string | undefined>;
-  const where: any = {};
+  const where: any = {isDeleted: false};
   if (city) where.city = { contains: city, mode: 'insensitive' };
   if (category) where.category = { contains: category, mode: 'insensitive' };
   if (from || to) where.dateTime = { gte: from ? new Date(from) : undefined, lte: to ? new Date(to) : undefined };
@@ -66,7 +67,7 @@ router.get('/', async (req, res) => {
 router.get('/my', requireAuth(['ORGANIZER']), async (req: AuthenticatedRequest, res) => {
   try {
     const events = await prisma.event.findMany({
-      where: { organizerId: req.user!.userId },
+      where: { organizerId: req.user!.userId, isDeleted: false },
       include: {
         ticketTypes: {
           select: {
@@ -118,11 +119,17 @@ router.put('/:id', requireAuth(['ORGANIZER']), async (req: AuthenticatedRequest,
 });
 
 router.delete('/:id', requireAuth(['ORGANIZER']), async (req: AuthenticatedRequest, res) => {
+
+  console.log('Deleting event with ID:', req.params.id);
+  
+  if (!req.params.id) return res.status(400).json({ errors: ['Event ID is required'] });
   const event = await prisma.event.findUnique({ where: { id: req.params.id as string } });
   if (!event) return res.status(404).json({ message: 'Not found' });
   if (event.organizerId !== req.user!.userId) return res.status(403).json({ message: 'Forbidden' });
-  await prisma.event.delete({ where: { id: req.params.id as string } });
-  return res.status(204).send();
+  const updated = await prisma.event.update({ where: { id: req.params.id as string }, data: { isDeleted: true} });
+  return res.json(updated);
+
+  // return res.status(204).send();
 });
 
 router.post('/:eventId/tickets', requireAuth(['ORGANIZER']), async (req: AuthenticatedRequest, res) => {

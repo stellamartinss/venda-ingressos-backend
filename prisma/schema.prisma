@@ -58,6 +58,8 @@ model Event {
   bannerUrl   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false) 
+
 
   organizer   User     @relation("OrganizerEvents", fields: [organizerId], references: [id])
   ticketTypes TicketType[]
