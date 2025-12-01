@@ -4,6 +4,7 @@ const express_1 = require("express");
 const zod_1 = require("zod");
 const prisma_1 = require("../lib/prisma");
 const auth_1 = require("../middleware/auth");
+const tickets_1 = require("../controllers/tickets");
 const router = (0, express_1.Router)();
 const eventSchema = zod_1.z.object({
     name: zod_1.z.string().min(3),
@@ -13,18 +14,37 @@ const eventSchema = zod_1.z.object({
     category: zod_1.z.string().min(2),
     dateTime: zod_1.z.string(),
     bannerUrl: zod_1.z.string().url().optional(),
+    isDeleted: zod_1.z.boolean().optional().default(false),
+});
+const ticketTypeSchema = zod_1.z.object({
+    name: zod_1.z.string().min(2),
+    price: zod_1.z.number().positive(),
+    quantityTotal: zod_1.z.number().int().positive(),
 });
 router.post('/', (0, auth_1.requireAuth)(['ORGANIZER']), async (req, res) => {
     const parsed = eventSchema.safeParse(req.body);
+    const parsedTicketTypes = zod_1.z.array(ticketTypeSchema).safeParse(req.body.ticketTypes || []);
     if (!parsed.success)
         return res.status(400).json({ errors: parsed.error.flatten() });
     const data = parsed.data;
     const created = await prisma_1.prisma.event.create({ data: { ...data, dateTime: new Date(data.dateTime), organizerId: req.user.userId, bannerUrl: data.bannerUrl ?? null } });
+    if (!parsedTicketTypes.success) {
+        return res.status(400).json({ errors: parsedTicketTypes.error.flatten() });
+    }
+    const ticketTypesData = parsedTicketTypes.data.map(tt => ({
+        ...tt,
+        eventId: created.id,
+    }));
+    await prisma_1.prisma.ticketType.createMany({
+        data: ticketTypesData,
+    });
+    console.log('not parsed data:', req.body);
+    console.log('parsed data:', parsed.data);
     return res.status(201).json(created);
 });
 router.get('/', async (req, res) => {
     const { city, category, from, to } = req.query;
-    const where = {};
+    const where = { isDeleted: false };
     if (city)
         where.city = { contains: city, mode: 'insensitive' };
     if (category)
@@ -32,13 +52,17 @@ router.get('/', async (req, res) => {
     if (from || to)
         where.dateTime = { gte: from ? new Date(from) : undefined, lte: to ? new Date(to) : undefined };
     const events = await prisma_1.prisma.event.findMany({ where, orderBy: { dateTime: 'asc' } });
-    return res.json(events);
+    return res.json({
+        count: events.length,
+        data: events,
+        success: true
+    });
 });
 // GET /events/my - Returns all events created by the authenticated organizer
 router.get('/my', (0, auth_1.requireAuth)(['ORGANIZER']), async (req, res) => {
     try {
         const events = await prisma_1.prisma.event.findMany({
-            where: { organizerId: req.user.userId },
+            where: { organizerId: req.user.userId, isDeleted: false },
             include: {
                 ticketTypes: {
                     select: {
@@ -91,18 +115,17 @@ router.put('/:id', (0, auth_1.requireAuth)(['ORGANIZER']), async (req, res) => {
     return res.json(updated);
 });
 router.delete('/:id', (0, auth_1.requireAuth)(['ORGANIZER']), async (req, res) => {
+    console.log('Deleting event with ID:', req.params.id);
+    if (!req.params.id)
+        return res.status(400).json({ errors: ['Event ID is required'] });
     const event = await prisma_1.prisma.event.findUnique({ where: { id: req.params.id } });
     if (!event)
         return res.status(404).json({ message: 'Not found' });
     if (event.organizerId !== req.user.userId)
         return res.status(403).json({ message: 'Forbidden' });
-    await prisma_1.prisma.event.delete({ where: { id: req.params.id } });
-    return res.status(204).send();
-});
-const ticketTypeSchema = zod_1.z.object({
-    name: zod_1.z.string().min(2),
-    price: zod_1.z.number().positive(),
-    quantityTotal: zod_1.z.number().int().positive(),
+    const updated = await prisma_1.prisma.event.update({ where: { id: req.params.id }, data: { isDeleted: true } });
+    return res.json(updated);
+    // return res.status(204).send();
 });
 router.post('/:eventId/tickets', (0, auth_1.requireAuth)(['ORGANIZER']), async (req, res) => {
     const parsed = ticketTypeSchema.safeParse(req.body);
@@ -143,5 +166,6 @@ router.delete('/:eventId/tickets/:ticketId', (0, auth_1.requireAuth)(['ORGANIZER
     await prisma_1.prisma.ticketType.delete({ where: { id: tt.id } });
     return res.status(204).send();
 });
+router.get('/my-tickets', (0, auth_1.requireAuth)(['CUSTOMER']), tickets_1.getClientTickets);
 exports.default = router;
 //# sourceMappingURL=events.js.map

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import { getClientTickets } from '../controllers/tickets';
 
 const router = Router();
 
@@ -166,6 +167,8 @@ router.delete('/:eventId/tickets/:ticketId', requireAuth(['ORGANIZER']), async (
   await prisma.ticketType.delete({ where: { id: tt.id } });
   return res.status(204).send();
 });
+
+router.get('/my-tickets', requireAuth(['CUSTOMER']), getClientTickets);
 
 export default router;
 
